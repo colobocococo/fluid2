@@ -399,9 +399,16 @@ public:
                 fout << "\n";
             }
 
-            int v1, v2, v3, v4;
-            auto v = velocity.get(v1, v2, v3, v4);
-            fout << v << "\n";
+            for (size_t x = 0; x < N; ++x) {
+                for (size_t y = 0; y < M; ++y) {
+                    for (size_t ii = 0; ii < deltas.size(); ++ii) {
+                        auto [dx, dy] = deltas[ii];
+                        int nx = x + dx, ny = y + dy;
+                        auto v = velocity.get(x, y, dx, dy);
+                        fout << v;
+                    }
+                }
+            }
 
             T_def total_delta_p = 0;
             // Apply external forces
@@ -502,7 +509,7 @@ public:
             if (prop) {
                 cout << "Tick " << i << ":\n";
                 for (size_t x = 0; x < N; ++x) {
-                    //cout << field[x] << "\n";
+                    cout << field[x] << "\n";
                 }
             }
         }
