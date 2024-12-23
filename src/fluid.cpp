@@ -6,23 +6,6 @@ using namespace std;
 constexpr size_t T = 1'000'000;
 constexpr std::array<pair<int, int>, 4> deltas{{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}};
 
-// char field[N][M + 1] = {
-//     "#####",
-//     "#.  #",
-//     "#.# #",
-//     "#.# #",
-//     "#.# #",
-//     "#.# #",
-//     "#.# #",
-//     "#.# #",
-//     "#...#",
-//     "#####",
-//     "#   #",
-//     "#   #",
-//     "#   #",
-//     "#####",
-// };
-
 template <int n, int k>
 class Fixed {
 public:
@@ -70,6 +53,18 @@ Fixed <n1, k1> operator*(Fixed <n1, k1> a, Fixed <n2, k2> b) {
 }
 
 template <int n1, int k1>
+double operator*(double a, Fixed <n1, k1> b) {
+    a *= b.v>>k1;
+    return a;
+}
+
+template <int n1, int k1>
+Fixed <n1, k1> operator*(Fixed <n1, k1> a, double b) {
+    a.v *= int(b);
+    return a;
+}
+
+template <int n1, int k1>
 Fixed <n1, k1> operator/(Fixed <n1, k1> a, int b) {
     return a/ Fixed <n1, k1> (b);
 }
@@ -83,14 +78,44 @@ Fixed <n1, k1> operator/(Fixed <n1, k1> a, Fixed <n2, k2> b) {
     return res;
 }
 
+template <int n1, int k1>
+double operator/(double a, Fixed <n1, k1> b) {
+    a /= b.v>>k1;
+    return a;
+}
+
 template <int n1, int n2, int k1, int k2>
 Fixed <n1, k1> &operator+=(Fixed <n1, k1> &a, Fixed <n2, k2> b) {
     return a = a + b;
 }
 
+template <int n1, int k1>
+Fixed <n1, k1> &operator+=(Fixed <n1, k1> &a, double b) {
+    a.v += int(b) << k1;
+    return a;
+}
+
+template <int n1, int k1>
+double &operator+=(double& a, Fixed <n1, k1> &b) {
+    a += b.v>>k1;
+    return a;
+}
+
 template <int n1, int n2, int k1, int k2>
 Fixed <n1, k1> &operator-=(Fixed <n1, k1> &a, Fixed <n2, k2> b) {
     return a = a - b;
+}
+
+template <int n1, int k1>
+Fixed <n1, k1> &operator-=(Fixed <n1, k1> &a, double b) {
+    Fixed <n1, k1> b_new = b;
+    return a = a - b_new;
+}
+
+template <int n1, int k1>
+double &operator-=(double &a, Fixed <n1, k1> &b) {
+    a -= b.v>>k1;
+    return a;
 }
 
 template <int n, int k>
@@ -126,19 +151,7 @@ ostream &operator<<(ostream &out, Fixed <n, k> x) {
     return out << x.v / (double) (1 << k);
 }
 
-template <int n1, int n2, int k1, int k2>
-Fixed <n2, k2> to(Fixed <n1, k1> x) {
-    Fixed <n2, k2> res;
-    res.v = x.v;
-    if (k1 < k2) res.v <<= (k2 - k1);
-    else res.v >>= (k1 - k2);
-    return res;
-}
-
-
-
 int UT = 0;
-
 
 mt19937 rnd(1337);
 
@@ -148,67 +161,78 @@ Fixed <n, k> random01() {
 }
 
 //start
-ifstream fin("D:\\homework\\input.txt");
+ifstream fin("input.txt");
 template <int n, int k>
 Fixed <n, k> read_new() {
     float a;
     fin >> a;
     return Fixed <n, k> (a);
 }
-//#define T_r Fixed <30, 13>
-//#define T_def  Fixed <32, 16>
 
-constexpr size_t N = 36, M = 84;
-template <typename T_r, typename T_def>
+template <typename p_type, typename v_type, typename v_flow_type, size_t N, size_t M>
 class simulation {
 public:
     int dirs[N][M]{};
-    T_r rho[256];
-    T_r g = 0.5;
-    T_r p[N][M]{};
-    T_r old_p[N][M];
+    p_type rho[256];
+    p_type g = 0.5;
+    p_type p[N][M]{};
+    p_type old_p[N][M];
     int last_use[N][M]{};
 
+    template<typename T>
     struct VectorField {
-        array<Fixed <30, 13>, deltas.size()> v[size_t(N)][M];
-        Fixed <30, 13> &add(int x, int y, int dx, int dy, Fixed <30, 13> dv) {
+        array<T, deltas.size()> v[size_t(N)][M];
+        T &add(int x, int y, int dx, int dy, T dv) {
             return get(x, y, dx, dy) += dv;
         }
 
-        Fixed <30, 13> &get(int x, int y, int dx, int dy) {
+        T &get(int x, int y, int dx, int dy) {
             size_t i = ranges::find(deltas, pair(dx, dy)) - deltas.begin();
             assert(i < deltas.size());
             return v[x][y][i];
         }
     };
 
-    VectorField velocity{}, velocity_flow{};
+    VectorField <v_type> velocity{};
+    VectorField <v_flow_type> velocity_flow{};
 
     char field[N][M + 1];
 
-    tuple<T_r, bool, pair<int, int>> propagate_flow(int x, int y, T_r lim) {
+    tuple<p_type, bool, pair<int, int>> propagate_flow(int x, int y, p_type lim) {
         last_use[x][y] = UT - 1;
-        T_r ret = 0;
+        p_type ret = 0;
         for (auto [dx, dy] : deltas) {
             int nx = x + dx, ny = y + dy;
             if (field[nx][ny] != '#' && last_use[nx][ny] < UT) {
-                auto cap = velocity.get(x, y, dx, dy);
-                auto flow = velocity_flow.get(x, y, dx, dy);
+                v_type cap = velocity.get(x, y, dx, dy);
+                v_type flow = 0;
+                flow += velocity_flow.get(x, y, dx, dy);
+
                 if (flow == cap) {
                     continue;
                 }
                 // assert(v >= velocity_flow.get(x, y, dx, dy));
-                auto vp = min(lim, cap - flow);
+                v_type nlim = 0;
+                nlim += lim;
+                auto vp = min(nlim, cap - flow);
                 if (last_use[nx][ny] == UT - 1) {
-                    velocity_flow.add(x, y, dx, dy, vp);
+                    v_flow_type nvp = 0;
+                    nvp += vp;
+                    velocity_flow.add(x, y, dx, dy, nvp);
                     last_use[x][y] = UT;
                     // cerr << x << " " << y << " -> " << nx << " " << ny << " " << vp << " / " << lim << "\n";
-                    return {vp, 1, {nx, ny}};
+                    p_type to_ret = 0;
+                    to_ret += nvp;
+                    return {to_ret, 1, {nx, ny}};
                 }
-                auto [t, prop, end] = propagate_flow(nx, ny, vp);
+                p_type to_ret = 0;
+                to_ret += vp;
+                auto [t, prop, end] = propagate_flow(nx, ny, to_ret);
                 ret += t;
                 if (prop) {
-                    velocity_flow.add(x, y, dx, dy, t);
+                    v_flow_type nt = 0;
+                    nt += t;
+                    velocity_flow.add(x, y, dx, dy, nt);
                     last_use[x][y] = UT;
                     // cerr << x << " " << y << " -> " << nx << " " << ny << " " << t << " / " << lim << "\n";
                     return {t, prop && end != pair(x, y), end};
@@ -221,8 +245,8 @@ public:
 
     struct ParticleParams {
         char type;
-        T_r cur_p;
-        array<T_r, deltas.size()> v;
+        p_type cur_p;
+        array<v_type, deltas.size()> v;
 
         void swap_with(int x, int y, simulation * ths) {
             swap(ths->field[x][y], type);
@@ -255,8 +279,8 @@ public:
         }
     }
 
-    T_def move_prob(int x, int y) {
-        T_def sum = 0;
+    p_type move_prob(int x, int y) {
+        p_type sum = 0;
         for (size_t i = 0; i < deltas.size(); ++i) {
             auto [dx, dy] = deltas[i];
             int nx = x + dx, ny = y + dy;
@@ -277,8 +301,8 @@ public:
         bool ret = false;
         int nx = -1, ny = -1;
         do {
-            std::array<Fixed <32, 16>, deltas.size()> tres;
-            Fixed <32, 16> sum = 0;
+            array<p_type, deltas.size()> tres;
+            p_type sum = 0;
             for (size_t i = 0; i < deltas.size(); ++i) {
                 auto [dx, dy] = deltas[i];
                 int nx = x + dx, ny = y + dy;
@@ -299,7 +323,9 @@ public:
                 break;
             }
 
-            Fixed p1 = random01 <32, 16>() * sum;
+            p_type p1 = 0;
+            Fixed <32, 16> xx = random01 <32, 16>() * sum;
+            p1 += xx;
             size_t d = std::ranges::upper_bound(tres, p1) - tres.begin();
 
             auto [dx, dy] = deltas[d];
@@ -367,7 +393,7 @@ public:
 
         for (size_t i = 0; i < T; ++i) {
             string filename = to_string(i);
-            filename += "output.txt";
+            filename += "output.txt"; //result will be saved
             //cout << filename << ' ';
             ofstream fout (filename);
 
@@ -410,14 +436,17 @@ public:
                 }
             }
 
-            T_def total_delta_p = 0;
+            p_type total_delta_p = 0;
             // Apply external forces
             for (size_t x = 0; x < N; ++x) {
                 for (size_t y = 0; y < M; ++y) {
                     if (field[x][y] == '#')
                         continue;
-                    if (field[x + 1][y] != '#')
-                        velocity.add(x, y, 1, 0, g);
+                    if (field[x + 1][y] != '#') {
+                        v_type zero = 0;
+                        zero += g;
+                        velocity.add(x, y, 1, 0, zero);
+                    }
                 }
             }
 
@@ -431,7 +460,8 @@ public:
                         int nx = x + dx, ny = y + dy;
                         if (field[nx][ny] != '#' && old_p[nx][ny] < old_p[x][y]) {
                             auto delta_p = old_p[x][y] - old_p[nx][ny];
-                            auto force = delta_p;
+                            v_type force = 0;
+                            force += delta_p;
                             auto &contr = velocity.get(nx, ny, -dx, -dy);
                             if (contr * rho[(int) field[nx][ny]] >= force) {
                                 contr -= force / rho[(int) field[nx][ny]];
@@ -440,8 +470,11 @@ public:
                             force -= contr * rho[(int) field[nx][ny]];
                             contr = 0;
                             velocity.add(x, y, dx, dy, force / rho[(int) field[x][y]]);
-                            p[x][y] -= force / dirs[x][y];
-                            total_delta_p -= force / dirs[x][y];
+
+                            v_type plus = force / dirs[x][y];
+                            p[x][y] -= plus;
+                            plus = force / dirs[x][y];
+                            total_delta_p -= plus;
                         }
                     }
                 }
@@ -472,19 +505,24 @@ public:
                         continue;
                     for (auto [dx, dy]: deltas) {
                         auto old_v = velocity.get(x, y, dx, dy);
-                        auto new_v = velocity_flow.get(x, y, dx, dy);
+                        v_type new_v = 0;
+                        new_v += velocity_flow.get(x, y, dx, dy);
                         if (old_v > 0) {
                             assert(new_v <= old_v);
                             velocity.get(x, y, dx, dy) = new_v;
-                            auto force = (old_v - new_v) * rho[(int) field[x][y]];
+                            v_type force = (old_v - new_v) * rho[(int) field[x][y]];
                             if (field[x][y] == '.')
                                 force *= 0.8;
                             if (field[x + dx][y + dy] == '#') {
-                                p[x][y] += force / dirs[x][y];
-                                total_delta_p += force / dirs[x][y];
+                                v_type plus = force / dirs[x][y];
+                                p[x][y] += plus;
+                                plus = force / dirs[x][y];
+                                total_delta_p += plus;
                             } else {
-                                p[x + dx][y + dy] += force / dirs[x + dx][y + dy];
-                                total_delta_p += force / dirs[x + dx][y + dy];
+                                v_type plus = force / dirs[x + dx][y + dy];
+                                p[x + dx][y + dy] += plus;
+                                plus = force / dirs[x + dx][y + dy];
+                                total_delta_p += plus;
                             }
                         }
                     }
@@ -496,7 +534,10 @@ public:
             for (size_t x = 0; x < N; ++x) {
                 for (size_t y = 0; y < M; ++y) {
                     if (field[x][y] != '#' && last_use[x][y] != UT) {
-                        if (random01<32, 16>() < move_prob(x, y)) {
+                        p_type ff = 0;
+                        Fixed <32, 16> xx = random01<32, 16>();
+                        ff += xx;
+                        if (ff < move_prob(x, y)) {
                             prop = true;
                             propagate_move(x, y, true);
                         } else {
@@ -509,7 +550,7 @@ public:
             if (prop) {
                 cout << "Tick " << i << ":\n";
                 for (size_t x = 0; x < N; ++x) {
-                    cout << field[x] << "\n";
+                    //cout << field[x] << "\n";
                 }
             }
         }
@@ -517,7 +558,7 @@ public:
 };
 
 int main() {
-    simulation <Fixed <30, 13>, Fixed <32, 16>> x;
+    simulation <Fixed <32, 16>, Fixed <32, 16>, Fixed <32, 16>, 36, 84> x; //you can choose types and sizes
     x.init();
     x.work();
     return 0;
